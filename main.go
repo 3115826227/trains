@@ -6,6 +6,7 @@ import (
 	"git.tianrang-inc.com/data-brain/trains/config"
 	"git.tianrang-inc.com/data-brain/trains/log"
 	"git.tianrang-inc.com/data-brain/trains/middleware"
+	"git.tianrang-inc.com/data-brain/trains/queue"
 	"git.tianrang-inc.com/data-brain/trains/server"
 	"github.com/gin-gonic/gin"
 	"io/ioutil"
@@ -15,6 +16,35 @@ import (
 	"sync"
 	"time"
 )
+
+func init() {
+
+	var wg sync.WaitGroup
+	router := gin.New()
+
+	router.Use(middleware.Cors())
+
+	router.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"ret":     404,
+			"message": "找不到该路由",
+		})
+	})
+
+	router.NoMethod(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"ret":     404,
+			"message": "找不到该方法",
+		})
+	})
+
+	server.Route(router)
+
+	wg.Add(1)
+	go Run(router)
+
+	wg.Wait()
+}
 
 func Run(router *gin.Engine) {
 	srv := &http.Server{
@@ -31,6 +61,10 @@ func Run(router *gin.Engine) {
 	quit := make(chan os.Signal)
 	signal.Notify(quit, os.Interrupt)
 	<-quit
+
+	//服务关闭前将内存中的数据进行redis写入
+	queue.StorageData()
+
 	log.Logger.Info("Shutdown Server....")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -48,19 +82,4 @@ func Run(router *gin.Engine) {
 }
 
 func main() {
-
-	var wg sync.WaitGroup
-
-	c := gin.Default()
-
-	//中间件初始化，接口允许AJAX跨域访问
-	c.Use(middleware.Cors())
-
-	server.Route(c)
-
-	wg.Add(1)
-	go Run(c)
-
-	wg.Wait()
-
 }
